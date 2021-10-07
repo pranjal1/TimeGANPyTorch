@@ -1,6 +1,9 @@
+import os
+import datetime
 from tqdm import tqdm
 
 import torch
+from loguru import logger
 
 from .gru import GRUNet
 from .utils import get_moments
@@ -59,6 +62,59 @@ class TimeGAN:
         self.initialize_optimizers()
         self.loss_bce = torch.nn.BCELoss()
         self.loss_mse = torch.nn.MSELoss()
+        self.file_storage()
+
+    def file_storage(self):
+        ts = datetime.datetime.today().strftime("%Y-%m-%d-%H-%M-%S")
+        log_dir = os.path.join(os.path.dirname(__file__), ("../logs_" + ts))
+        if not os.path.isdir(log_dir):
+            os.makedirs(log_dir)
+        self.embedder_recovery_error_log = os.path.join(
+            log_dir, "embedder_recovery_error_log.log"
+        )
+        self.supervisor_error_log = os.path.join(log_dir, "supervisor_error_log.log")
+        self.joint_generator_error_log = os.path.join(
+            log_dir, "joint_generator_error_log.log"
+        )
+        self.joint_embedder_recovery_error_log = os.path.join(
+            log_dir, "joint_embedder_recovery_error_log.log"
+        )
+        self.joint_discriminator_error_log = os.path.join(
+            log_dir, "joint_discriminator_error_log.log"
+        )
+        log_files = [
+            self.embedder_recovery_error_log,
+            self.supervisor_error_log,
+            self.joint_generator_error_log,
+            self.joint_embedder_recovery_error_log,
+            self.joint_discriminator_error_log,
+        ]
+        for f in log_files:
+            with open(f, "w") as f:
+                f.write("iteration,loss\n")
+        self.model_save_path = os.path.join(log_dir, "model.pth")
+
+    def save_model(self):
+        torch.save(
+            {
+                "embedder_state_dict": self.embedder.network.state_dict(),
+                "recovery_state_dict": self.recovery.network.state_dict(),
+                "supervisor_state_dict": self.supervisor.network.state_dict(),
+                "generator_state_dict": self.generator.network.state_dict(),
+                "discriminator_state_dict": self.discriminator.network.state_dict(),
+            },
+            self.model_save_path,
+        )
+
+    def load_model(self, path):
+        check_point = torch.open(open("path", "rb"))
+        self.embedder.network.load_state_dict(check_point["embedder_state_dict"])
+        self.recovery.network.load_state_dict(check_point["recovery_state_dict"])
+        self.supervisor.network.load_state_dict(check_point["supervisor_state_dict"])
+        self.generator.network.load_state_dict(check_point["generator_state_dict"])
+        self.discriminator.network.load_state_dict(
+            check_point["discriminator_state_dict"]
+        )
 
     def initialize_networks(self):
         self.embedder = RecurrentNetwork(
@@ -145,7 +201,8 @@ class TimeGAN:
         )
 
     def embedder_recovery_training(self):
-        for _ in tqdm(range(self.iterations)):
+        logger.info("Traning Embedder and Recovery Networks...")
+        for i in tqdm(range(self.iterations)):
             self.E0_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
             H = self.embedder(X, T)
@@ -153,9 +210,24 @@ class TimeGAN:
             E_loss_0 = 10 * torch.sqrt(self.loss_mse(X, X_tilde))
             E_loss_0.backward()
             self.E0_solver.step()
+            with open(self.embedder_recovery_error_log, "a") as f:
+                f.write("{},{}".format(i, str(E_loss_0.item())))
+                f.write("\n")
+        logger.info("Traning Embedder and Recovery Networks complete")
+
+    """
+    log_files = [
+            self.embedder_recovery_error_log,
+            self.supervisor_error_log,
+            self.joint_generator_error_log,
+            self.joint_embedder_recovery_error_log,
+            self.joint_discriminator_error_log,
+        ]
+    """
 
     def supervisor_training(self):
-        for _ in tqdm(range(self.iterations)):
+        logger.info("Traning Supervisor Network...")
+        for i in tqdm(range(self.iterations)):
             self.GS_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
             # Z = self.dataloader.get_z(self.batch_size) # no use, same is the case in the main implementation
@@ -164,10 +236,15 @@ class TimeGAN:
             G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
             G_loss_S.backward()
             self.GS_solver.step()
+            with open(self.supervisor_error_log, "a") as f:
+                f.write("{},{}".format(i, str(G_loss_S.item())))
+                f.write("\n")
+        logger.info("Traning Supervisor Network complete")
 
     def joint_training(self):
-        for _ in tqdm(range(self.iterations)):
-            for _ in range(2):
+        logger.info("Performing Joint Network training...")
+        for i in tqdm(range(self.iterations)):
+            for kk in range(2):
                 self.G_solver.zero_grad()
                 self.E_solver.zero_grad()
                 X, T = self.dataloader.get_x_t(self.batch_size)
@@ -210,6 +287,12 @@ class TimeGAN:
                 self.G_solver.step()
                 E_loss.backward()
                 self.E0_solver.step()
+                with open(self.joint_generator_error_log, "a") as f:
+                    f.write("{},{}".format(i * 2 + kk, str(G_loss.item())))
+                    f.write("\n")
+                with open(self.joint_embedder_recovery_error_log, "a") as f:
+                    f.write("{},{}".format(i * 2 + kk, str(E_loss.item())))
+                    f.write("\n")
 
             self.D_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
@@ -230,6 +313,11 @@ class TimeGAN:
                 D_loss.backward()
                 self.D_solver.step()
 
+            with open(self.joint_discriminator_error_log, "a") as f:
+                f.write("{},{}".format(i, str(D_loss.item())))
+                f.write("\n")
+        logger.info("Joint Network training complete")
+
     def synthetic_data_generation(self):
         Z = self.dataloader.get_z(self.batch_size, self.dataloader.T)
         E_hat = self.generator(Z, self.dataloader.T)
@@ -246,3 +334,11 @@ class TimeGAN:
         generated_data = generated_data * self.dataloader.max_val
         generated_data = generated_data + self.dataloader.min_val
         return generated_data
+
+    def train(self):
+        try:
+            self.embedder_recovery_training()
+            self.supervisor_training()
+            self.joint_training()
+        except KeyboardInterrupt:
+            self.save_model()
