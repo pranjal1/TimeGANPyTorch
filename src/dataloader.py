@@ -127,10 +127,10 @@ class TimeSeriesDataLoader:
     def get_time(self):
         self.T, self.max_seq_len = extract_time(self.data)
 
-    def get_z(self, batch_size):
+    def get_z(self, batch_size, T_mb):
         return torch.from_numpy(
             np.asarray(
-                random_generator(batch_size, self.dim, self.T, self.max_seq_len),
+                random_generator(batch_size, self.dim, T_mb, self.max_seq_len),
                 dtype=np.float32,
             )
         )

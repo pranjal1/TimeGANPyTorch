@@ -51,6 +51,9 @@ class TimeGAN:
         self.dataloader = TimeSeriesDataLoader("energy", self.sequence_length)
         self.max_seq_length = self.dataloader.max_seq_len
         self.ip_dimension = self.dataloader.dim
+        self.data_min_val = self.dataloader.min_val
+        self.data_max_val = self.dataloader.max_val
+        self.ori_time = self.dataloader.ori_time
         self.gamma = 1
         self.initialize_networks()
         self.initialize_optimizers()
@@ -168,7 +171,7 @@ class TimeGAN:
                 self.G_solver.zero_grad()
                 self.E_solver.zero_grad()
                 X, T = self.dataloader.get_x_t(self.batch_size)
-                Z = self.dataloader.get_z(self.batch_size)
+                Z = self.dataloader.get_z(self.batch_size, T)
 
                 H = self.embedder(X, T)
                 H_hat_supervise = self.supervisor(H, T)
@@ -210,7 +213,7 @@ class TimeGAN:
 
             self.D_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
-            Z = self.dataloader.get_z(self.batch_size)
+            Z = self.dataloader.get_z(self.batch_size, T)
             H = self.embedder(X, T)
             E_hat = self.generator(Z, T)
             H_hat = self.supervisor(E_hat, T)
@@ -226,3 +229,20 @@ class TimeGAN:
             if D_loss.item() > 0.15:
                 D_loss.backward()
                 self.D_solver.step()
+
+    def synthetic_data_generation(self):
+        Z = self.dataloader.get_z(self.batch_size, self.dataloader.T)
+        E_hat = self.generator(Z, self.dataloader.T)
+        H_hat = self.supervisor(E_hat, self.dataloader.T)
+        X_hat = self.recovery(H_hat, self.dataloader.T)
+
+        generated_data = list()
+        # data generated has max-length, so to match the number of datapoints as in original data
+        for i in range(self.dataloader.num_obs):
+            temp = X_hat[i, : self.dataloader.T[i], :]
+            generated_data.append(temp)
+
+        # Renormalization
+        generated_data = generated_data * self.dataloader.max_val
+        generated_data = generated_data + self.dataloader.min_val
+        return generated_data
