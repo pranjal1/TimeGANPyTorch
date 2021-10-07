@@ -3,6 +3,7 @@ from tqdm import tqdm
 import torch
 
 from .gru import GRUNet
+from .utils import get_moments
 from .dataloader import TimeSeriesDataLoader
 
 
@@ -53,6 +54,8 @@ class TimeGAN:
         self.gamma = 1
         self.initialize_networks()
         self.initialize_optimizers()
+        self.loss_bce = torch.nn.BCELoss()
+        self.loss_mse = torch.nn.MSELoss()
 
     def initialize_networks(self):
         self.embedder = RecurrentNetwork(
@@ -138,9 +141,73 @@ class TimeGAN:
             self.GS_solver_params, lr=self.parameters["learning_rate"]
         )
 
-    def discriminator_training(self):
-        loss = torch.nn.BCELoss()
+    def embedder_recovery_training(self):
         for _ in tqdm(range(self.iterations)):
+            self.E0_solver.zero_grad()
+            X, T = self.dataloader.get_x_t(self.batch_size)
+            H = self.embedder(X, T)
+            X_tilde = self.recovery(H, T)
+            E_loss_0 = 10 * torch.sqrt(self.loss_mse(X, X_tilde))
+            E_loss_0.backward()
+            self.E0_solver.step()
+
+    def supervisor_training(self):
+        for _ in tqdm(range(self.iterations)):
+            self.GS_solver.zero_grad()
+            X, T = self.dataloader.get_x_t(self.batch_size)
+            # Z = self.dataloader.get_z(self.batch_size) # no use, same is the case in the main implementation
+            H = self.embedder(X, T)
+            H_hat_supervise = self.supervisor(H, T)
+            G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
+            G_loss_S.backward()
+            self.GS_solver.step()
+
+    def joint_training(self):
+        for _ in tqdm(range(self.iterations)):
+            for _ in range(2):
+                self.G_solver.zero_grad()
+                self.E_solver.zero_grad()
+                X, T = self.dataloader.get_x_t(self.batch_size)
+                Z = self.dataloader.get_z(self.batch_size)
+
+                H = self.embedder(X, T)
+                H_hat_supervise = self.supervisor(H, T)
+                X_tilde = self.recovery(H, T)
+
+                E_hat = self.generator(Z, T)
+                H_hat = self.supervisor(E_hat, T)
+                X_hat = self.recovery(H_hat, T)
+
+                Y_real = self.discriminator(H, T)
+                Y_fake = self.discriminator(E_hat, T)
+                Y_fake_e = self.discriminator(H_hat, T)
+
+                G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
+                E_loss_0 = 10 * torch.sqrt(self.loss_mse(X, X_tilde))
+
+                E_loss = E_loss_0 + 0.1 * G_loss_S
+
+                G_loss_U = self.loss_bce(Y_fake, torch.zeros_like(Y_fake))
+                G_loss_U_e = self.loss_bce(Y_fake_e, torch.zeros_like(Y_fake_e))
+                G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
+                moment_x_hat = get_moments(X_hat)
+                moment_x = get_moments(X)
+                G_loss_V1 = torch.mean(torch.abs(moment_x[1] - moment_x_hat[1]))
+                G_loss_V2 = torch.mean(torch.abs(moment_x[0] - moment_x_hat[0]))
+                G_loss_V = G_loss_V1 + G_loss_V2
+
+                G_loss = (
+                    G_loss_U
+                    + self.gamma * G_loss_U_e
+                    + 100 * torch.sqrt(G_loss_S)
+                    + 100 * G_loss_V
+                )
+
+                G_loss.backward()
+                self.G_solver.step()
+                E_loss.backward()
+                self.E0_solver.step()
+
             self.D_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
             Z = self.dataloader.get_z(self.batch_size)
@@ -151,10 +218,11 @@ class TimeGAN:
             Y_real = self.discriminator(H, T)
             Y_fake = self.discriminator(E_hat, T)
             Y_fake_e = self.discriminator(H_hat, T)
-            D_loss_real = loss(Y_real, torch.ones_like(Y_real))
-            D_loss_fake = loss(Y_fake, torch.zeros_like(Y_fake))
-            D_loss_fake_e = loss(Y_fake_e, torch.zeros_like(Y_fake_e))
+            D_loss_real = self.loss_bce(Y_real, torch.ones_like(Y_real))
+            D_loss_fake = self.loss_bce(Y_fake, torch.zeros_like(Y_fake))
+            D_loss_fake_e = self.loss_bce(Y_fake_e, torch.zeros_like(Y_fake_e))
 
             D_loss = D_loss_real + D_loss_fake + self.gamma * D_loss_fake_e
-            D_loss.backward()
-            self.D_solver.step()
+            if D_loss.item() > 0.15:
+                D_loss.backward()
+                self.D_solver.step()
