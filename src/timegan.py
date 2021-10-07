@@ -139,7 +139,8 @@ class TimeGAN:
         )
 
     def discriminator_training(self):
-        for _ in tqdm(self.iterations):
+        loss = torch.nn.BCELoss()
+        for _ in tqdm(range(self.iterations)):
             self.D_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
             Z = self.dataloader.get_z(self.batch_size)
@@ -150,9 +151,9 @@ class TimeGAN:
             Y_real = self.discriminator(H, T)
             Y_fake = self.discriminator(E_hat, T)
             Y_fake_e = self.discriminator(H_hat, T)
-            D_loss_real = torch.nn.BCELoss(Y_real, torch.ones_like(Y_real))
-            D_loss_fake = torch.nn.BCELoss(Y_fake, torch.ones_like(Y_fake))
-            D_loss_fake_e = torch.nn.BCELoss(Y_fake_e, torch.ones_like(Y_fake_e))
+            D_loss_real = loss(Y_real, torch.ones_like(Y_real))
+            D_loss_fake = loss(Y_fake, torch.zeros_like(Y_fake))
+            D_loss_fake_e = loss(Y_fake_e, torch.zeros_like(Y_fake_e))
 
             D_loss = D_loss_real + D_loss_fake + self.gamma * D_loss_fake_e
             D_loss.backward()
