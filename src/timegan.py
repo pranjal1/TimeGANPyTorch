@@ -14,6 +14,7 @@ class RecurrentNetwork:
         input_dimension,
         hidden_dimension,
         output_dimension,
+        max_seq_length,
     ) -> None:
         self.module_name = module_name
         assert self.module_name in ["gru", "lstm"]  # lstmLN is missing
@@ -21,11 +22,13 @@ class RecurrentNetwork:
         self.input_dimension = input_dimension
         self.hidden_dimension = hidden_dimension
         self.output_dimension = output_dimension
+        self.max_seq_length = max_seq_length
         self.network = GRUNet(
             self.input_dimension,
             self.hidden_dimension,
             self.output_dimension,
             self.num_layers,
+            self.max_seq_length,
         )
 
     def __call__(self, X, T):
@@ -45,8 +48,11 @@ class TimeGAN:
         self.module_name = self.parameters["module"]
         self.sequence_length = self.parameters["sequence_length"]
         self.dataloader = TimeSeriesDataLoader("energy", self.sequence_length)
+        self.max_seq_length = self.dataloader.max_seq_len
         self.ip_dimension = self.dataloader.dim
         self.gamma = 1
+        self.initialize_networks()
+        self.initialize_optimizers()
 
     def initialize_networks(self):
         self.embedder = RecurrentNetwork(
@@ -55,6 +61,7 @@ class TimeGAN:
             self.ip_dimension,
             self.hidden_dim,
             self.hidden_dim,
+            self.max_seq_length,
         )
         self.recovery = RecurrentNetwork(
             "gru",
@@ -62,10 +69,16 @@ class TimeGAN:
             self.hidden_dim,
             self.hidden_dim,
             self.ip_dimension,
+            self.max_seq_length,
         )
 
         self.discriminator = RecurrentNetwork(
-            "gru", self.num_layers, self.hidden_dim, self.hidden_dim, 1
+            "gru",
+            self.num_layers,
+            self.hidden_dim,
+            self.hidden_dim,
+            1,
+            self.max_seq_length,
         )
         self.generator = RecurrentNetwork(
             "gru",
@@ -73,6 +86,7 @@ class TimeGAN:
             self.ip_dimension,
             self.hidden_dim,
             self.hidden_dim,
+            self.max_seq_length,
         )
 
         self.supervisor = RecurrentNetwork(
@@ -81,6 +95,7 @@ class TimeGAN:
             self.hidden_dim,
             self.hidden_dim,
             self.hidden_dim,
+            self.max_seq_length,
         )
 
     def initialize_optimizers(self):
@@ -89,7 +104,7 @@ class TimeGAN:
             *self.recovery.network.parameters(),
         ]
         self.E0_solver = torch.optim.Adam(
-            self.E0_solver_params, lr=self.params["learning_rate"]
+            self.E0_solver_params, lr=self.parameters["learning_rate"]
         )
 
         self.E_solver_params = [
@@ -97,14 +112,14 @@ class TimeGAN:
             *self.recovery.network.parameters(),
         ]
         self.E_solver = torch.optim.Adam(
-            self.E_solver_params, lr=self.params["learning_rate"]
+            self.E_solver_params, lr=self.parameters["learning_rate"]
         )
 
         self.D_solver_params = [
             *self.discriminator.network.parameters(),
         ]
         self.D_solver = torch.optim.Adam(
-            self.D_solver_params, lr=self.params["learning_rate"]
+            self.D_solver_params, lr=self.parameters["learning_rate"]
         )
 
         self.G_solver_params = [
@@ -112,7 +127,7 @@ class TimeGAN:
             *self.supervisor.network.parameters(),
         ]
         self.G_solver = torch.optim.Adam(
-            self.G_solver_params, lr=self.params["learning_rate"]
+            self.G_solver_params, lr=self.parameters["learning_rate"]
         )
 
         self.GS_solver_params = [
@@ -120,7 +135,7 @@ class TimeGAN:
             *self.supervisor.network.parameters(),
         ]
         self.GS_solver = torch.optim.Adam(
-            self.GS_solver_params, lr=self.params["learning_rate"]
+            self.GS_solver_params, lr=self.parameters["learning_rate"]
         )
 
     def discriminator_training(self):

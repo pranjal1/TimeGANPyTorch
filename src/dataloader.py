@@ -129,12 +129,19 @@ class TimeSeriesDataLoader:
 
     def get_z(self, batch_size):
         return torch.from_numpy(
-            np.asarray(random_generator(batch_size, self.dim, self.T, self.max_seq_len))
+            np.asarray(
+                random_generator(batch_size, self.dim, self.T, self.max_seq_len),
+                dtype=np.float32,
+            )
         )
 
     def get_x_t(self, batch_size):
-        idx = random.shuffle([i for i in range(self.num_obs)])
-        return torch.from_numpy(self.data[idx, :]), torch.from_numpy(self.T[idx])
+        idx = [i for i in range(self.num_obs)]
+        random.shuffle(idx)
+        idx = idx[:batch_size]
+        batch_data = np.take(np.array(self.data, dtype=np.float32), idx, axis=0)
+        batch_data_T = np.take(np.array(self.T, dtype=np.float32), idx, axis=0)
+        return torch.from_numpy(batch_data), torch.from_numpy(batch_data_T)
 
     def __getitem__(self, index):
         return (
