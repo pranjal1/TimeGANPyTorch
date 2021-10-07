@@ -51,7 +51,8 @@ class TimeGAN:
         self.batch_size = self.parameters["batch_size"]
         self.module_name = self.parameters["module"]
         self.sequence_length = self.parameters["sequence_length"]
-        self.dataloader = TimeSeriesDataLoader("energy", self.sequence_length)
+        self.dataset = self.parameters["dataset"]
+        self.dataloader = TimeSeriesDataLoader(self.dataset, self.sequence_length)
         self.max_seq_length = self.dataloader.max_seq_len
         self.ip_dimension = self.dataloader.dim
         self.data_min_val = self.dataloader.min_val
@@ -214,16 +215,6 @@ class TimeGAN:
                 f.write("{},{}".format(i, str(E_loss_0.item())))
                 f.write("\n")
         logger.info("Traning Embedder and Recovery Networks complete")
-
-    """
-    log_files = [
-            self.embedder_recovery_error_log,
-            self.supervisor_error_log,
-            self.joint_generator_error_log,
-            self.joint_embedder_recovery_error_log,
-            self.joint_discriminator_error_log,
-        ]
-    """
 
     def supervisor_training(self):
         logger.info("Traning Supervisor Network...")

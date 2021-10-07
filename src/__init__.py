@@ -1,0 +1,1 @@
+from .timegan import TimeGAN
