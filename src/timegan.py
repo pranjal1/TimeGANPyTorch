@@ -57,7 +57,7 @@ class TimeGAN:
         self.ip_dimension = self.dataloader.dim
         self.data_min_val = self.dataloader.min_val
         self.data_max_val = self.dataloader.max_val
-        self.ori_time = self.dataloader.ori_time
+        self.ori_time = self.dataloader.T
         self.gamma = 1
         self.initialize_networks()
         self.initialize_optimizers()
@@ -96,6 +96,7 @@ class TimeGAN:
         self.model_save_path = os.path.join(log_dir, "model.pth")
 
     def save_model(self):
+        logger.info("Saving model...")
         torch.save(
             {
                 "embedder_state_dict": self.embedder.network.state_dict(),
@@ -106,6 +107,7 @@ class TimeGAN:
             },
             self.model_save_path,
         )
+        logger.info("Saving model complete!!!")
 
     def load_model(self, path):
         check_point = torch.open(open("path", "rb"))
@@ -332,4 +334,5 @@ class TimeGAN:
             self.supervisor_training()
             self.joint_training()
         except KeyboardInterrupt:
+            logger.error("KeyBoard Interrupt!")
             self.save_model()

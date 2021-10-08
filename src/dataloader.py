@@ -103,6 +103,7 @@ class TimeSeriesDataLoader:
         self.data, self.min_val, self.max_val = self.MinMaxScaler(np.asarray(data))
         self.num_obs, self.seq_len, self.dim = self.data.shape
         self.get_time()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def MinMaxScaler(self, data):
         """Min-Max Normalizer.
@@ -133,7 +134,7 @@ class TimeSeriesDataLoader:
                 random_generator(batch_size, self.dim, T_mb, self.max_seq_len),
                 dtype=np.float32,
             )
-        )
+        ).to(self.device)
 
     def get_x_t(self, batch_size):
         idx = [i for i in range(self.num_obs)]
@@ -141,7 +142,10 @@ class TimeSeriesDataLoader:
         idx = idx[:batch_size]
         batch_data = np.take(np.array(self.data, dtype=np.float32), idx, axis=0)
         batch_data_T = np.take(np.array(self.T, dtype=np.float32), idx, axis=0)
-        return torch.from_numpy(batch_data), torch.from_numpy(batch_data_T)
+        return (
+            torch.from_numpy(batch_data).to(self.device),
+            torch.from_numpy(batch_data_T).to(self.device),
+        )
 
     def __getitem__(self, index):
         return (
