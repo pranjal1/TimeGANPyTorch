@@ -110,7 +110,7 @@ class TimeGAN:
         logger.info("Saving model complete!!!")
 
     def load_model(self, path):
-        check_point = torch.open(open("path", "rb"))
+        check_point = torch.load(path)
         self.embedder.network.load_state_dict(check_point["embedder_state_dict"])
         self.recovery.network.load_state_dict(check_point["recovery_state_dict"])
         self.supervisor.network.load_state_dict(check_point["supervisor_state_dict"])
@@ -238,14 +238,24 @@ class TimeGAN:
         logger.info("Performing Joint Network training...")
         for i in tqdm(range(self.iterations)):
             for kk in range(2):
-                self.G_solver.zero_grad()
-                self.E_solver.zero_grad()
                 X, T = self.dataloader.get_x_t(self.batch_size)
                 Z = self.dataloader.get_z(self.batch_size, T)
 
+                self.E_solver.zero_grad()
                 H = self.embedder(X, T)
                 H_hat_supervise = self.supervisor(H, T)
                 X_tilde = self.recovery(H, T)
+
+                G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
+                E_loss_0 = 10 * torch.sqrt(self.loss_mse(X, X_tilde))
+
+                E_loss = E_loss_0 + 0.1 * G_loss_S
+                E_loss.backward()
+                self.E0_solver.step()
+
+                self.G_solver.zero_grad()
+                H = self.embedder(X, T)
+                H_hat_supervise = self.supervisor(H, T)
 
                 E_hat = self.generator(Z, T)
                 H_hat = self.supervisor(E_hat, T)
@@ -254,11 +264,6 @@ class TimeGAN:
                 Y_real = self.discriminator(H, T)
                 Y_fake = self.discriminator(E_hat, T)
                 Y_fake_e = self.discriminator(H_hat, T)
-
-                G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
-                E_loss_0 = 10 * torch.sqrt(self.loss_mse(X, X_tilde))
-
-                E_loss = E_loss_0 + 0.1 * G_loss_S
 
                 G_loss_U = self.loss_bce(Y_fake, torch.zeros_like(Y_fake))
                 G_loss_U_e = self.loss_bce(Y_fake_e, torch.zeros_like(Y_fake_e))
@@ -275,11 +280,9 @@ class TimeGAN:
                     + 100 * torch.sqrt(G_loss_S)
                     + 100 * G_loss_V
                 )
-
                 G_loss.backward()
                 self.G_solver.step()
-                E_loss.backward()
-                self.E0_solver.step()
+
                 with open(self.joint_generator_error_log, "a") as f:
                     f.write("{},{}".format(i * 2 + kk, str(G_loss.item())))
                     f.write("\n")
@@ -287,9 +290,9 @@ class TimeGAN:
                     f.write("{},{}".format(i * 2 + kk, str(E_loss.item())))
                     f.write("\n")
 
-            self.D_solver.zero_grad()
             X, T = self.dataloader.get_x_t(self.batch_size)
             Z = self.dataloader.get_z(self.batch_size, T)
+            self.D_solver.zero_grad()
             H = self.embedder(X, T)
             E_hat = self.generator(Z, T)
             H_hat = self.supervisor(E_hat, T)
