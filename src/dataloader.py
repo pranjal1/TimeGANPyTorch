@@ -144,7 +144,9 @@ class TimeSeriesDataLoader:
         batch_data_T = np.take(np.array(self.T, dtype=np.float32), idx, axis=0)
         return (
             torch.from_numpy(batch_data).to(self.device),
-            torch.from_numpy(batch_data_T).to(self.device),
+            torch.from_numpy(
+                batch_data_T
+            ),  # T should a simple CPU tensor, otherwise error is thrown
         )
 
     def __getitem__(self, index):
