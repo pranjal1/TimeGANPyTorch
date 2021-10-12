@@ -61,7 +61,7 @@ class TimeGAN:
         self.gamma = 1
         self.initialize_networks()
         self.initialize_optimizers()
-        self.loss_bce = torch.nn.BCELoss()
+        self.loss_bce = torch.nn.functional.binary_cross_entropy_with_logits()
         self.loss_mse = torch.nn.MSELoss()
         self.file_storage()
 
@@ -268,10 +268,15 @@ class TimeGAN:
                 G_loss_U = self.loss_bce(Y_fake, torch.zeros_like(Y_fake))
                 G_loss_U_e = self.loss_bce(Y_fake_e, torch.zeros_like(Y_fake_e))
                 G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
-                moment_x_hat = get_moments(X_hat)
-                moment_x = get_moments(X)
-                G_loss_V1 = torch.mean(torch.abs(moment_x[1] - moment_x_hat[1]))
-                G_loss_V2 = torch.mean(torch.abs(moment_x[0] - moment_x_hat[0]))
+
+                # Two Momments
+                G_loss_V1 = torch.mean(
+                    torch.abs(
+                        torch.sqrt(X_hat.var(dim=0, unbiased=False) + 1e-6)
+                        - torch.sqrt(X.var(dim=0, unbiased=False) + 1e-6)
+                    )
+                )
+                G_loss_V2 = torch.mean(torch.abs((X_hat.mean(dim=0)) - (X.mean(dim=0))))
                 G_loss_V = G_loss_V1 + G_loss_V2
 
                 G_loss = (
@@ -315,7 +320,7 @@ class TimeGAN:
         logger.info("Joint Network training complete")
 
     def synthetic_data_generation(self):
-        Z = self.dataloader.get_z(self.batch_size, self.dataloader.T)
+        Z = self.dataloader.get_z(self.dataloader.num_obs, self.dataloader.T)
         E_hat = self.generator(Z, self.dataloader.T)
         H_hat = self.supervisor(E_hat, self.dataloader.T)
         X_hat = self.recovery(H_hat, self.dataloader.T)
@@ -327,15 +332,21 @@ class TimeGAN:
             generated_data.append(temp)
 
         # Renormalization
-        generated_data = generated_data * self.dataloader.max_val
-        generated_data = generated_data + self.dataloader.min_val
-        return generated_data
+        generated_data_scaled = []
+        for x in generated_data:
+            x = x.cpu().detach().numpy()
+            x = (x * self.dataloader.max_val) + self.dataloader.min_val
+            generated_data_scaled.append(x)
+        return generated_data_scaled
 
     def train(self):
         try:
             self.embedder_recovery_training()
+            self.save_model()
             self.supervisor_training()
+            self.save_model()
             self.joint_training()
+            self.save_model()
         except KeyboardInterrupt:
             logger.error("KeyBoard Interrupt!")
             self.save_model()
