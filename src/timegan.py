@@ -61,8 +61,8 @@ class TimeGAN:
         self.gamma = 1
         self.initialize_networks()
         self.initialize_optimizers()
-        self.loss_bce = torch.nn.functional.binary_cross_entropy_with_logits()
-        self.loss_mse = torch.nn.MSELoss()
+        self.loss_bce = torch.nn.functional.binary_cross_entropy_with_logits
+        self.loss_mse = torch.nn.functional.mse_loss
         self.file_storage()
 
     def file_storage(self):
