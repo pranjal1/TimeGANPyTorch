@@ -3,7 +3,15 @@ import torch.nn as nn
 
 
 class GRUNet(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, n_layers, max_seq_len):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        output_dim,
+        n_layers,
+        max_seq_len,
+        use_activation,
+    ):
         super(GRUNet, self).__init__()
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
@@ -16,6 +24,7 @@ class GRUNet(nn.Module):
         self.activation = nn.Sigmoid()
         self.max_seq_len = max_seq_len
         self.padding_value = -1.0  # from PyTorch implementation
+        self.use_activation = use_activation
 
         with torch.no_grad():
             for name, param in self.gru.named_parameters():
@@ -44,7 +53,9 @@ class GRUNet(nn.Module):
             padding_value=self.padding_value,
             total_length=self.max_seq_len,
         )
-        out = self.activation(self.fc(out))
+        out = self.fc(out)
+        if self.use_activation:
+            out = self.activation(out)
         return out
 
     def init_hidden(self, batch_size):

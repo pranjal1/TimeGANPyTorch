@@ -19,6 +19,7 @@ class RecurrentNetwork:
         hidden_dimension,
         output_dimension,
         max_seq_length,
+        use_activation=True,
     ) -> None:
         self.module_name = module_name
         assert self.module_name in ["gru", "lstm"]  # lstmLN is missing
@@ -27,12 +28,14 @@ class RecurrentNetwork:
         self.hidden_dimension = hidden_dimension
         self.output_dimension = output_dimension
         self.max_seq_length = max_seq_length
+        self.use_activation = use_activation
         self.network = GRUNet(
             self.input_dimension,
             self.hidden_dimension,
             self.output_dimension,
             self.num_layers,
             self.max_seq_length,
+            self.use_activation,
         )
 
     def __call__(self, X, T):
@@ -135,6 +138,7 @@ class TimeGAN:
             self.hidden_dim,
             self.ip_dimension,
             self.max_seq_length,
+            use_activation=False,
         )
 
         self.discriminator = RecurrentNetwork(
@@ -144,6 +148,7 @@ class TimeGAN:
             self.hidden_dim,
             1,
             self.max_seq_length,
+            use_activation=False,
         )
         self.generator = RecurrentNetwork(
             "gru",
@@ -249,7 +254,6 @@ class TimeGAN:
                 H_hat = self.supervisor(E_hat, T)
                 X_hat = self.recovery(H_hat, T)
 
-                Y_real = self.discriminator(H, T)
                 Y_fake = self.discriminator(E_hat, T)
                 Y_fake_e = self.discriminator(H_hat, T)
 
@@ -286,7 +290,7 @@ class TimeGAN:
 
                 E_loss = E_loss_0 + 0.1 * G_loss_S
                 E_loss.backward()
-                self.E0_solver.step()
+                self.E_solver.step()
 
                 with open(self.joint_generator_error_log, "a") as f:
                     f.write("{},{}".format(i * 2 + kk, str(G_loss.item())))
@@ -297,6 +301,7 @@ class TimeGAN:
 
             X, T = self.dataloader.get_x_t(self.batch_size)
             Z = self.dataloader.get_z(self.batch_size, T)
+
             self.D_solver.zero_grad()
             H = self.embedder(X, T)
             E_hat = self.generator(Z, T)
@@ -310,7 +315,7 @@ class TimeGAN:
             D_loss_fake_e = self.loss_bce(Y_fake_e, torch.zeros_like(Y_fake_e))
 
             D_loss = D_loss_real + D_loss_fake + self.gamma * D_loss_fake_e
-            if D_loss.item() > 0.15:
+            if D_loss > 0.15:
                 D_loss.backward()
                 self.D_solver.step()
 
