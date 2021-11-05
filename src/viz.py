@@ -116,4 +116,3 @@ def visualization(ori_data, generated_data, analysis):
         plt.xlabel("x-tsne")
         plt.ylabel("y_tsne")
         plt.show()
-

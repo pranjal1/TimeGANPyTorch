@@ -46,6 +46,7 @@ class RecurrentNetwork:
 class TimeGAN:
     def __init__(self, parameters):
         self.parameters = parameters
+        self.use_wgan = self.parameters["use_wgan"]
 
         # Network Parameters
         self.hidden_dim = self.parameters["hidden_dim"]
@@ -62,6 +63,7 @@ class TimeGAN:
         self.data_max_val = self.dataloader.max_val
         self.ori_time = self.dataloader.T
         self.gamma = 1
+        self.c = 0.01  # clipping value
         self.initialize_networks()
         self.initialize_optimizers()
         self.loss_bce = torch.nn.functional.binary_cross_entropy_with_logits
@@ -324,6 +326,95 @@ class TimeGAN:
                 f.write("\n")
         logger.info("Joint Network training complete")
 
+    def joint_training_wgan(self):
+        logger.info("Performing Joint Network training...")
+        for i in tqdm(range(self.iterations)):
+            for kk in range(2):
+                X, T = self.dataloader.get_x_t(self.batch_size)
+                Z = self.dataloader.get_z(self.batch_size, T)
+
+                self.G_solver.zero_grad()
+                H = self.embedder(X, T)
+                H_hat_supervise = self.supervisor(H, T)
+
+                E_hat = self.generator(Z, T)
+                H_hat = self.supervisor(E_hat, T)
+                X_hat = self.recovery(H_hat, T)
+
+                Y_fake = self.discriminator(E_hat, T)
+                Y_fake_e = self.discriminator(H_hat, T)
+
+                G_loss_U = -torch.mean(Y_fake)
+                G_loss_U_e = -torch.mean(Y_fake_e)
+                G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
+
+                # Two Momments
+                G_loss_V1 = torch.mean(
+                    torch.abs(
+                        torch.sqrt(X_hat.var(dim=0, unbiased=False) + 1e-6)
+                        - torch.sqrt(X.var(dim=0, unbiased=False) + 1e-6)
+                    )
+                )
+                G_loss_V2 = torch.mean(torch.abs((X_hat.mean(dim=0)) - (X.mean(dim=0))))
+                G_loss_V = G_loss_V1 + G_loss_V2
+
+                G_loss = (
+                    G_loss_U
+                    + self.gamma * G_loss_U_e
+                    + 100 * torch.sqrt(G_loss_S)
+                    + 100 * G_loss_V
+                )
+                G_loss.backward()
+                self.G_solver.step()
+
+                self.E_solver.zero_grad()
+                H = self.embedder(X, T)
+                H_hat_supervise = self.supervisor(H, T)
+                X_tilde = self.recovery(H, T)
+
+                G_loss_S = self.loss_mse(H[:, 1:, :], H_hat_supervise[:, :-1, :])
+                E_loss_0 = 10 * torch.sqrt(self.loss_mse(X, X_tilde))
+
+                E_loss = E_loss_0 + 0.1 * G_loss_S
+                E_loss.backward()
+                self.E_solver.step()
+
+                with open(self.joint_generator_error_log, "a") as f:
+                    f.write("{},{}".format(i * 2 + kk, str(G_loss.item())))
+                    f.write("\n")
+                with open(self.joint_embedder_recovery_error_log, "a") as f:
+                    f.write("{},{}".format(i * 2 + kk, str(E_loss.item())))
+                    f.write("\n")
+
+            X, T = self.dataloader.get_x_t(self.batch_size)
+            Z = self.dataloader.get_z(self.batch_size, T)
+
+            self.D_solver.zero_grad()
+            H = self.embedder(X, T)
+            E_hat = self.generator(Z, T)
+            H_hat = self.supervisor(E_hat, T)
+
+            Y_real = self.discriminator(H, T)
+            Y_fake = self.discriminator(E_hat, T)
+            Y_fake_e = self.discriminator(H_hat, T)
+            D_loss_real = -torch.mean(Y_real)
+            D_loss_fake = torch.mean(Y_fake)
+            D_loss_fake_e = torch.mean(Y_fake_e)
+
+            D_loss = D_loss_real + D_loss_fake + self.gamma * D_loss_fake_e
+            if D_loss > 0.15:
+                D_loss.backward()
+                self.D_solver.step()
+
+                # clipping D
+                for p in self.discriminator.parameters():
+                    p.data.clamp_(-self.c, self.c)
+
+            with open(self.joint_discriminator_error_log, "a") as f:
+                f.write("{},{}".format(i, str(D_loss.item())))
+                f.write("\n")
+        logger.info("Joint Network training complete")
+
     def synthetic_data_generation(self):
         Z = self.dataloader.get_z(self.dataloader.num_obs, self.dataloader.T)
         E_hat = self.generator(Z, self.dataloader.T)
@@ -345,12 +436,15 @@ class TimeGAN:
         return generated_data_scaled
 
     def train(self):
+        self.joint_trainer_fn = (
+            self.joint_training_wgan if self.use_wgan else self.joint_training
+        )
         try:
             self.embedder_recovery_training()
             self.save_model()
             self.supervisor_training()
             self.save_model()
-            self.joint_training()
+            self.joint_trainer_fn()
             self.save_model()
         except KeyboardInterrupt:
             logger.error("KeyBoard Interrupt!")

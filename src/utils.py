@@ -62,50 +62,30 @@ def get_moments(d, n=2):
     # Return the first n moments of the data provided
     mean = torch.mean(d)
     if n == 1:
-        return mean.reshape(
-            1,
-        )
+        return mean.reshape(1,)
     diffs = d - mean
     var = torch.mean(torch.pow(diffs, 2.0))
     std = torch.pow(var, 0.5)
     if n == 2:
         return (
-            mean.reshape(
-                1,
-            ),
-            std.reshape(
-                1,
-            ),
+            mean.reshape(1,),
+            std.reshape(1,),
         )
     zscores = diffs / std
     skews = torch.mean(torch.pow(zscores, 3.0))
     if n == 3:
         return (
-            mean.reshape(
-                1,
-            ),
-            std.reshape(
-                1,
-            ),
-            skews.reshape(
-                1,
-            ),
+            mean.reshape(1,),
+            std.reshape(1,),
+            skews.reshape(1,),
         )
     kurtoses = (
         torch.mean(torch.pow(zscores, 4.0)) - 3.0
     )  # excess kurtosis, should be 0 for Gaussian
     final = (
-        mean.reshape(
-            1,
-        ),
-        std.reshape(
-            1,
-        ),
-        skews.reshape(
-            1,
-        ),
-        kurtoses.reshape(
-            1,
-        ),
+        mean.reshape(1,),
+        std.reshape(1,),
+        skews.reshape(1,),
+        kurtoses.reshape(1,),
     )
     return final
