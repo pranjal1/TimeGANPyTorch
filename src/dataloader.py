@@ -8,6 +8,7 @@ import random
 
 import torch
 import numpy as np
+import pandas as pd
 
 from .utils import random_generator, MinMaxScaler, extract_time
 
@@ -83,11 +84,42 @@ def real_data_loading(data_path, seq_len):
 
     return data
 
+def medical_data_loading(data_path, seq_len):
+    """Load and preprocess real-world datasets.
+
+    Args:
+      - data_name: stock or energy
+      - seq_len: sequence length
+
+    Returns:
+      - data: preprocessed data.
+    """
+
+    ori_data = pd.read_csv(data_path)
+    ori_data = np.array(ori_data[["FP1","FP2"]])
+    # Normalize the data
+    ori_data = MinMaxScaler(ori_data)
+
+    # Preprocess the dataset
+    temp_data = []
+    # Cut data by sequence length
+    for i in range(0, len(ori_data)//seq_len):
+        _x = ori_data[i*seq_len : (i + 1) * seq_len]
+        temp_data.append(_x)
+
+    # Mix the datasets (to make it similar to i.i.d)
+    idx = np.random.permutation(len(temp_data))
+    data = []
+    for i in range(len(temp_data)):
+        data.append(temp_data[idx[i]])
+
+    return data
+
 
 class TimeSeriesDataLoader:
     def __init__(self, data_name, seq_length, no: int = 10000, dim: int = 5) -> None:
         super().__init__()
-        assert data_name in ["stock", "energy", "sine"]
+        assert data_name in ["stock", "energy", "sine", "medical"]
         self.data_dir = os.path.join(os.path.dirname(__file__), "../data")
         if data_name == "stock":
             data = real_data_loading(
@@ -96,6 +128,10 @@ class TimeSeriesDataLoader:
         elif data_name == "energy":
             data = real_data_loading(
                 os.path.join(self.data_dir, "energy_data.csv"), seq_length
+            )
+        elif data_name == "medical":
+            data = medical_data_loading(
+                os.path.join(self.data_dir, "medical_ehr.csv"), seq_length
             )
         else:
             assert isinstance(no, int) and isinstance(dim, int)

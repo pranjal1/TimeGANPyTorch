@@ -329,7 +329,7 @@ class TimeGAN:
     def joint_training_wgan(self):
         logger.info("Performing Joint Network training...")
         for i in tqdm(range(self.iterations)):
-            for kk in range(2):
+            for kk in range(4):
                 X, T = self.dataloader.get_x_t(self.batch_size)
                 Z = self.dataloader.get_z(self.batch_size, T)
 
@@ -402,13 +402,12 @@ class TimeGAN:
             D_loss_fake_e = torch.mean(Y_fake_e)
 
             D_loss = D_loss_real + D_loss_fake + self.gamma * D_loss_fake_e
-            if D_loss > 0.15:
-                D_loss.backward()
-                self.D_solver.step()
+            D_loss.backward()
+            self.D_solver.step()
 
-                # clipping D
-                for p in self.discriminator.parameters():
-                    p.data.clamp_(-self.c, self.c)
+            # clipping D
+            for p in self.discriminator.network.parameters():
+                p.data.clamp_(-self.c, self.c)
 
             with open(self.joint_discriminator_error_log, "a") as f:
                 f.write("{},{}".format(i, str(D_loss.item())))
