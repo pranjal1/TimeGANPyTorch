@@ -1,9 +1,22 @@
 # TimeGANPyTorch
 
-This repo contains the PyTorch implementation for TimeGAN network.
+This repo contains the PyTorch implementation for TimeGAN network. This was done for my Machine Learning course project.
 
 Here is the original TensorFlow implementation:
 https://github.com/jsyoon0823/TimeGAN
+
+### Example Notebook
+
+Please see example in this notebook for running the training and visualizing the results. For quantitative metrics and visualization, I used the same code as in the original repository.
+I used a new time-series dataset https://archive.ics.uci.edu/ml/datasets/EEG+Database .
+
+I tried using WGAN loss instead of the Vanilla GAN Loss as well. But the results were not that great. I believe this is due to not having the right set of hyper-parameters due to the time limitations. 
+
+https://colab.research.google.com/drive/1ths-Egd-lVC5JasqmbX3IpzaXMRxIdII?usp=sharing
+
+### Results from this implementation
+![alt text](data/results.png)
+![alt text](data/res_table.png)
 
 ## Usage:
 Example for training on the Stock Dataset:
