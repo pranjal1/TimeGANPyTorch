@@ -37,7 +37,7 @@ The log file loss of each of the 4 networks can be found in the `log_<TIMESTAMP>
 ### Supervisor Training
 ![alt text](data/supervisor_error.png)
 
-### Joint Generator, Emberdder-Recovery, Discriminator
+### Joint Generator, Embedder-Recovery, Discriminator Training
 ![alt text](data/joint_loss.png)
 
 ## Synthetic Data generation
