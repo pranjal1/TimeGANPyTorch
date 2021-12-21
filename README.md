@@ -5,10 +5,13 @@ This repo contains the PyTorch implementation for TimeGAN network. This was done
 Here is the original TensorFlow implementation:
 https://github.com/jsyoon0823/TimeGAN
 
+I also refered to this repository for reference.
+https://github.com/d9n13lt4n/timegan-pytorch
+
 ### Example Notebook
 
 Please see example in this notebook for running the training and visualizing the results. For quantitative metrics and visualization, I used the same code as in the original repository.
-I used a new time-series dataset https://archive.ics.uci.edu/ml/datasets/EEG+Database .
+I used a new time-series dataset https://archive.ics.uci.edu/ml/datasets/EEG+Database in addition to the datasets in the original paper.
 
 I tried using WGAN loss instead of the Vanilla GAN Loss as well. But the results were not that great. I believe this is due to not having the right set of hyper-parameters due to the time limitations. 
 
